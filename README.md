@@ -9,7 +9,7 @@
 | - |
 | author: itworks4u |
 | created: October 13th, 2025 |
-| updated: October 14th, 2025 |
+| updated: October 28th, 2025 |
 | version: 1.0.0 |
 
 ##  description
@@ -24,7 +24,7 @@
 -   use: `gcc(.exe) -g3 -Wall your_file.c lib/logging.c -Ilib`
 
 ##  using test files
--   in the folder `tests/` four files with each case exists
+-   in the folder `tests/` four files with a special case exists
 -   compile with: `gcc(.exe) -g3 -Wall tests/certain_file.c lib/logging.c -Ilib`
 
 ##  details
@@ -54,9 +54,9 @@ typedef struct {
 ```
 | members | description | additional informations |
 | - | - | - |
-| file_name | The file name for logging. By default next text will be appended to this file. | If no file name is given or the name length is outside of `[0..31]` characters, then "app.log" will be used instead. |
+| file_name | The file name for logging. By default next text is going to append to this file. | If no file name is given or the name length is outside of `[1..31]` characters, then "app.log" will be used instead. |
 | init_level | The minimal level for logging. | Every log level below the limit is going to ignore. |
-| on_console_only | Optional boolean flag. If set, then no file is in use. | No matter, if a file is given. |
+| on_console_only | Optional boolean flag. If set, then no file is in use. | No matter, if a file name is given. |
 | rotation_setting | Setup for log rotation. By default no rotation is set. | see: level for log rotation table |
 | file_size_in_mb | Only in use for **SIZE_ROTATION**. The amount of MB before the next rotation is going to handle. | If a value *below 1* is set, then the rotation_setting will be set to **NO_ROTATION**. |
 | nbr_of_keeping_files | The number of files to store before the oldest file is going to overwrite. | Only in use for **DAYLY_ROTATION** or **SIZE_ROTATION**. If the value is *below 2*, then the number is set to **2** by default. |
@@ -76,7 +76,8 @@ typedef struct {
     -   see: table of log levels
 
 ####    log to a file
--   by using a file, you can choose between one of three options: `[NO_ROTATION, DAYLY_ROTATION, SIZE_ROTATION]`
+-   you can choose between one of three options: `[NO_ROTATION, DAYLY_ROTATION, SIZE_ROTATION]`
+    -   **NOTE**: *Any other unknown option leads into an undefined behavior!*
 
 | level | meaning |
 | - | - |
