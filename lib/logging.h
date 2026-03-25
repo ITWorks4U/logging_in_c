@@ -5,7 +5,7 @@
 * By using stdout, the given log state is colorized.
 * By using a file, you can choose between one of three options:
 *    NO_ROTATION     := everything is going to write into the used log file
-*    DAYLY_ROTATION  := rotate the log file(s), when a new date has been detected
+*    DAILY_ROTATION  := rotate the log file(s), when a new date has been detected
 *    SIZE_ROTATION   := rotate the log file(s), when a certain size limit (in MB) has been exceeded
 *
 * This project has been written and tested on a Windows machine (Windows 11, 64bit) and
@@ -20,8 +20,8 @@
 *
 * @author    itworks4u
 * @created   October 12th, 2025
-* @updated   October 15th, 2025
-* @version   1.0.0
+* @updated   March 25th, 2026
+* @version   1.2.0
 */
 
 #ifndef LOGGING_H
@@ -57,48 +57,62 @@ typedef enum {
 	LOG_FATAL
 } LogLevel;
 
+/// @brief Rotation types for logging. Works only for logging into a file.
 typedef enum {
 	NO_ROTATION,
-	DAYLY_ROTATION,
+	DAILY_ROTATION,
 	SIZE_ROTATION
 } LogRotation;
 
-/// @brief Logging container. If the member on_console_only is set to true,
-/// then no log file is in use here. Every log output will be printed
+/// @brief Logging container. Offers to write a log event into a given file name.
+///
+/// If the member on_console_only is set to true,
+/// then no log file is in use here and every log output will be printed
 /// to stdout. Members:
 ///
-/// - file_name            = The file name for logging By default next text will be appended to this file.
-///                          If no file name is given or the name length is outside of [0..31] characters,
+/// - file_name            = The file name for logging. By default next text is going to append to this file.
+///                          If no file name is given or the name length is outside of [1..31] characters,
 ///                          then "app.log" will be used instead.
 ///
-/// - init_level           = the minimal level for logging; every log level below the limit is going to ignore
+/// - init_level           = The minimal level for logging. Every log level below this limit is going to ignore.
+///                          If the level is outside of [LOG_TRACE .. LOG_FATAL], then LOG_INFO is set.
 ///
-/// - on_console_only      = optional flag; if set, then no file is in use
+/// - on_console_only      = optional flag; if set, then the settings: file_name, rotation_setting, file_size_in_mb, nbr_of_keeping_files are ignored
 ///
 /// - rotation_setting     = Setup for log rotation. By default no rotation is set.
-///   Valid options: [NO_ROTATION, DAYLY_ROTATION, SIZE_ROTATION]
+///                          Valid options: [NO_ROTATION, DAILY_ROTATION, SIZE_ROTATION]
 ///
-/// - file_size_in_mb      = Only in use for SIZE_ROTATION. The amount of MB before the next rotation
-///   is going to handle. If a value <1 is set, then the rotation_setting will be set to NO_ROTATION!
+/// - file_size_in_mb      = Only in use for SIZE_ROTATION. If the curernt file size has been reached the upper limit,
+///                          then the next rotation begins. If the value is <1, then the rotation_setting will be set to NO_ROTATION
 ///
-/// - nbr_of_keeping_files = The number of files to store before the oldest file is going to overwrite.
-///   Only in use for DAYLY_ROTATION or SIZE_ROTATION. If the value is <2, then the number is set to 2 by default.
+/// - nbr_of_keeping_files = The number of files to keep, before the oldest file is going to overwrite.
+///                          Only in use for DAILY_ROTATION or SIZE_ROTATION. If the value is <2, then the number is set to 2 by default.
 typedef struct {
 	char file_name[LENGTH_FILE_NAME];
 	LogLevel init_level;
-	bool on_console_only;
 	LogRotation rotation_setting;
 	int file_size_in_mb;
 	int nbr_of_keeping_files;
+	bool on_console_only;
 } Logging;
 
 // -----------
 // function prototypes
 // -----------
 
-/// @brief Initialize a new log by given Logging container.
+/// @brief Initialize a new log by given Logging container. If the argument is NULL, then a default setting
+///        with console output and init_level to LOG_INFO is in use instead.
 /// @param log the logging container with known settings
 void init_log(Logging *log);
+
+/// @brief Initializing a new logging sequence by using the certain arguments.
+/// @param file_name name of the log file; if unset or outside of [1..31] characters, "app.log" will be used instead
+/// @param init_level minimal log level; level range: [LOG_TRACE .. LOG_FATAL]
+/// @param rotation log rotation setting; works only for a file logging; rotation settings: [NO_ROTATION, DAILY_ROTATION, SIZE_ROTATION]
+/// @param size_in_mb file size in MB before rotation begins; only for SIZE_ROTATION setting
+/// @param keep_nbr_files number of files to keep; only for DAILY_ROTATION and SIZE_ROTATION
+/// @param on_console write the log events to the console only; if set, then the settings: file_name, rotation, size_in_mb, keep_nbr_files are ignored
+void init_log_by_arguments(const char *file_name, const LogLevel init_level, const LogRotation rotation, int size_in_mb, int keep_nbr_files, bool on_console);
 
 /// @brief Log a message into a file. If console output is set, then the log messages are moved to stdout instead.
 ///
@@ -107,7 +121,7 @@ void init_log(Logging *log);
 /// NOTE: If a log output to stdout is set, then no output will be written into a file.
 /// @param level current log level
 /// @param format the formatted text
-void log_message(LogLevel level, const char* format, ...);
+void write_to_log(LogLevel level, const char* format, ...);
 
 // /// @brief Determine the current log file for file rotation.
 // /// @param buffer last known log file name
@@ -115,5 +129,5 @@ void log_message(LogLevel level, const char* format, ...);
 // void determine_log_filename(char* buffer, size_t size);
 
 /// @brief Dispose allocated memory for logging.
-void dispose_logging(void);
+void dispose(void);
 #endif

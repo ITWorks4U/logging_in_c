@@ -5,7 +5,7 @@
 * By using stdout, the given log state is colorized.
 * By using a file, you can choose between one of three options:
 *    NO_ROTATION     := everything is going to write into the used log file
-*    DAYLY_ROTATION  := rotate the log file(s), when a new date has been detected
+*    DAILY_ROTATION  := rotate the log file(s), when a new date has been detected
 *    SIZE_ROTATION   := rotate the log file(s), when a certain size limit (in MB) has been exceeded
 *
 * This project has been written and tested on a Windows machine (Windows 11, 64bit) and
@@ -20,8 +20,8 @@
 *
 * @author    itworks4u
 * @created   October 12th, 2025
-* @updated   October 15th, 2025
-* @version   1.0.0
+* @updated   March 25th, 2026
+* @version   1.2.0
 */
 
 #include <stdio.h>
@@ -42,6 +42,7 @@
 #else
 // for (any) UNIX system
 #include <unistd.h>
+#include <errno.h>
 #endif
 
 #include "logging.h"
@@ -60,29 +61,34 @@ static char _timestamp[LENGTH_TIMESTAMP];
 static char _base_log_file[LENGTH_FILE_NAME];
 
 /// @brief If set, comes from Logging.on_console_only, then no output
-/// is going to write into the file, even a file name by Logging.file_name
-/// has been set.
+///        is going to write into the file, even a file name by Logging.file_name
+///        has been set.
 static bool _on_console_only = false;
 
 /// @brief file pointer to use
 static FILE *_log_file_pointer = NULL;
 
 /// @brief The log level. Starts with LOG_INFO and will be updated by
-/// Logging.init_level. Every log level, which is at least that level
-/// is going to handle.
+///        Logging.init_level. Every log level, which is at least that level
+///        is going to handle.
 static LogLevel _level_for_logging = LOG_INFO;
 
 /// @brief The log rotation setting. Comes from Logging.rotation_setting.
-/// Depending on which rotation setting is set, the file might be updated
-/// on a certain condition.
+///        Depending on which rotation setting is set, the file might be updated
+///        on a certain condition.
 static LogRotation _log_rotation = NO_ROTATION;
 
 /// @brief The size of a file in MB. Defaults to 1MB. Only in use with SIZE_ROTATION.
 static int _size_for_file_size = 1024*1024;
 
 /// @brief The number of keeping files for file rotation. Only in use, if
-/// DAYLY_ROTATION or SIZE_ROTATION is set.
+///        DAILY_ROTATION or SIZE_ROTATION is set.
 static int _nbr_of_keeping_files = 1;
+
+/// @brief internal flag to check, if the initializing sequence has been passed trough
+///        to avoid an undefined behavior, when log_to_write() function has been called
+///        without init_log() or init_log_by_arguments()
+static bool _initializing_done = false;
 
 // -----------
 // constant expressions
@@ -93,7 +99,7 @@ static int _nbr_of_keeping_files = 1;
 static const char *_default_log_name = "app.log";
 
 // rotation names
-static const char *_rotation_strings[] = {"NO_ROTATION", "DAYLY_ROTATION", "SIZE_ROTATION"};
+static const char *_rotation_strings[] = {"NO_ROTATION", "DAILY_ROTATION", "SIZE_ROTATION"};
 
 // log types in words
 static const char *_level_strings[] = {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
@@ -114,8 +120,8 @@ static const char *_level_colors[] = {"\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[
 // -----------
 
 /// @brief Receive the log level as a word. Only a valid range of [0..5]
-/// can be used here. Every other value outside of the range will be handled
-/// with LOG_INFO only.
+///        can be used here. Every other value outside of the range will be handled
+///        with LOG_INFO only.
 /// @param level the level to look for
 /// @return the log level name
 static const char* _log_level_to_string(LogLevel level) {
@@ -127,7 +133,7 @@ static const char* _log_level_to_string(LogLevel level) {
 }
 
 /// @brief Create a new timestamp for the next time event.
-/// The internal managed _timestamp C-string will be updated.
+///        The internal managed _timestamp C-string will be updated.
 static void _create_new_timestamp(void) {
 	time_t now = time(NULL);
 	struct tm* t = localtime(&now);
@@ -136,16 +142,16 @@ static void _create_new_timestamp(void) {
 }
 
 /// @brief Rotate the log file. Only for DAYLY_ROTATING.
-/// For SIZE_ROTATION take a look to _rotate_log_files().
+///        For SIZE_ROTATION take a look to _rotate_log_files().
 ///
-/// When a new day has been detected, the log file will be renamed to 
-/// <filename.log>_<timestamp>. <filename.log> becomes a new file to work with
-static void _rotate_log_file_dayly(void) {
+///        When a new day has been detected, the log file will be renamed to 
+///        <filename.log>_<timestamp>. <filename.log> becomes a new file to work with
+static void _rotate_log_file_daily(void) {
 	char rotated_name[LENGTH_FILE_NAME + LENGTH_FILE_NAME];  // new rotation name of <filename.log>_<timestamp>
 	char date_stamp[LENGTH_DATE_STAMP];                      // format: YYYY_MM_DD
 
-	memset(rotated_name, '\0', LENGTH_FILE_NAME);
-	memset(date_stamp, '\0', LENGTH_DATE_STAMP);
+	memset(rotated_name, '\0', sizeof(rotated_name));
+	memset(date_stamp, '\0', sizeof(date_stamp));
 
 	// get current date
 	time_t now = time(NULL);
@@ -160,35 +166,38 @@ static void _rotate_log_file_dayly(void) {
 	if (access(rotated_name, F_OK) != 0) {
 		// rename current log file to rotated name
 		if (rename(_log_file_to_use, rotated_name) < 0) {
-			perror("Failed to rotate log file (dayly)");
+			fprintf(
+				stderr, "%sERROR: Failed to rotate log files for DAILY_ROTATION.\n%s",
+				_level_colors[4], COLOR_RESET
+			);
 			return;
 		}
 
 		// reset _log_file_to_use and rename it with
 		// the given name from initialization
-		memset(_log_file_to_use, '\0', LENGTH_FILE_NAME);
+		memset(_log_file_to_use, '\0', sizeof(_log_file_to_use));
 		strcpy(_log_file_to_use, _base_log_file);
 	}
 }
 
 /// @brief Initiate to rotate the log files. This happens only, if the setting is
-/// set to SIZE_ROTATION. For DAYLY_ROTATION take a look to _rotate_log_file_dayly().
+///        set to SIZE_ROTATION. For DAILY_ROTATION take a look to _rotate_log_file_daily().
 ///
-/// A rotation to the next file, depending on the given nbr_of_keeping_files is going
-/// to do, if required. If the limitation has been reached, then the oldest file is
-/// going to overwrite.
+///        A rotation to the next file, depending on the given nbr_of_keeping_files is going
+///        to do, if required. If the limitation has been reached, then the oldest file is
+///        going to overwrite.
 static void _rotate_log_files(void) {
 	char old_name[FILE_NAME_LOG_ROTATION];
 	char new_name[FILE_NAME_LOG_ROTATION];
 
 	// remove the oldest rotated file, if it exists
-	snprintf(old_name, FILE_NAME_LOG_ROTATION, "%s.%d", _log_file_to_use, _nbr_of_keeping_files);
-	remove(old_name);
+	snprintf(old_name, sizeof(old_name), "%s.%d", _log_file_to_use, _nbr_of_keeping_files);
+	remove(old_name);                                    // the oldest file may not exist, but this doesn't matter
 
 	// shift rotated files up: logfile.(n-1) -> logfile.n
 	for (int i = _nbr_of_keeping_files - 1; i >= 1; --i) {
-		snprintf(old_name, FILE_NAME_LOG_ROTATION, "%s.%d", _log_file_to_use, i);
-		snprintf(new_name, FILE_NAME_LOG_ROTATION, "%s.%d", _log_file_to_use, i + 1);
+		snprintf(old_name, sizeof(old_name), "%s.%d", _log_file_to_use, i);
+		snprintf(new_name, sizeof(new_name), "%s.%d", _log_file_to_use, i + 1);
 
 		// move old_name to new_name
 		rename(old_name, new_name);
@@ -196,19 +205,19 @@ static void _rotate_log_files(void) {
 
 	// rename the current log file <file_name>_<date_format>.log to <file_name>_<date_format>.logn
 	// n = [1..nbr_of_keeping_files]
-	snprintf(new_name, FILE_NAME_LOG_ROTATION, "%s.1", _log_file_to_use);
+	snprintf(new_name, sizeof(new_name), "%s.1", _log_file_to_use);
 	rename(_log_file_to_use, new_name);
 
 	// Now a new log file can be created as _log_file_to_use (e.g., logfile.log)
 }
 
-/// @brief Check, if a file needs a rotation. Only in use, if DAYLY_ROTATION or
-/// SIZE_ROTATION is set. In both cases the Logging.nbr_of_keeping_files is in use.
+/// @brief Check, if a file needs a rotation. Only in use, if DAILY_ROTATION or
+///        SIZE_ROTATION is set. In both cases the Logging.nbr_of_keeping_files is in use.
 ///
-/// SIZE_ROTATION: If the certain Logging.file_size_in_mb has exceeds the limit,
-/// mark for a rotation.
+///        SIZE_ROTATION: If the certain Logging.file_size_in_mb has exceeds the limit,
+///        mark for a rotation.
 ///
-/// DAYLY_ROTATION: If a new day starts, mark for a rotation.
+///        DAILY_ROTATION: If a new day starts, mark for a rotation.
 /// @param the current file name to use
 /// @return true, if a rotation is required, otherwise false
 static bool check_for_new_rotation(const char *filename) {
@@ -248,7 +257,7 @@ static bool check_for_new_rotation(const char *filename) {
 	SystemTimeToTzSpecificLocalTime(NULL, &stUTC, &stLocal);
 
 	// special case for dayly rotation (Windows)
-	if (_log_rotation == DAYLY_ROTATION) {
+	if (_log_rotation == DAILY_ROTATION) {
 		rotation_is_required = !(
 			now.wYear == stLocal.wYear &&
 			now.wMonth == stLocal.wMonth &&
@@ -286,7 +295,7 @@ static bool check_for_new_rotation(const char *filename) {
 	localtime_r(&now, &now_tm);
 
 	// special case for dayly rotation (UNIX system)
-	if (_log_rotation == DAYLY_ROTATION) {
+	if (_log_rotation == DAILY_ROTATION) {
 		rotation_is_required = !(
 			file_tm.tm_year == now_tm.tm_year &&
 			file_tm.tm_mon == now_tm.tm_mon &&
@@ -306,87 +315,113 @@ static bool check_for_new_rotation(const char *filename) {
 	return rotation_is_required;
 }
 
+/// @brief Final log initializer. The settings are come from init_log_by_arguments() or init_log() function(s).
+static void _internal_log_initializer(const char *file_name, const LogLevel init_level, const LogRotation rotation, int size_in_mb, int keep_nbr_files, bool on_console) {
+	_level_for_logging = init_level;
+	int level_warning = 3;
+
+	if (!(_level_for_logging >= LOG_TRACE && _level_for_logging <= LOG_FATAL)) {                                                   // check for an invalid log level setting
+		fprintf(
+			stderr,
+			"%sWarning: invalid log level setting detected. Set the level to %s default.%s\n",
+			_level_colors[level_warning], _level_strings[2], COLOR_RESET
+		);
+
+		_level_for_logging = LOG_INFO;
+	}
+
+	if (on_console) {
+		_on_console_only = true;
+		_initializing_done = true;
+		return;
+	}
+
+	// file handling options are selected
+	
+	if (!(rotation >= NO_ROTATION && rotation <= SIZE_ROTATION)) {                                                                 // the rotation setting is invalid
+		_log_rotation = NO_ROTATION;                                                                                               // use NO_ROTATION instead
+	} else {
+		_log_rotation = rotation;
+	}
+
+	if (size_in_mb < 1 && _log_rotation == SIZE_ROTATION) {                                                                        // check for invalid SIZE_ROTATION setting
+		fprintf(
+			stderr,
+			"%sWarning: Invalid size in MB for for option %s detected. Switching to option %s instead.%s\n",
+			_level_colors[level_warning], _rotation_strings[2], _rotation_strings[0], COLOR_RESET
+		);
+
+		_log_rotation = NO_ROTATION;
+	} else {
+		_size_for_file_size *= size_in_mb;                                                                                         // 1024*1024*size_in_mb
+	}
+
+	_nbr_of_keeping_files = (keep_nbr_files - 1);
+	if (_nbr_of_keeping_files < 2 && _log_rotation != NO_ROTATION) {                                                               // check for invalid keep_nbr_files setting
+		fprintf(
+			stderr,
+			"%sWarning: invalid number of keeping files detected: %d. Using 2 files to keep up by default.%s\n",
+			_level_colors[level_warning], keep_nbr_files, COLOR_RESET
+		);
+		_nbr_of_keeping_files = 2;
+	}
+
+	if (file_name == NULL) {                                                                                                       // check, if the file name points to NULL
+		strcpy(_log_file_to_use, _default_log_name);
+	} else {
+		size_t name_length = strlen(file_name);
+		bool on_valid_name_length = name_length > 0 && name_length < LENGTH_FILE_NAME;
+
+		if (!on_valid_name_length) {                                                                                               // check for valid file size length
+			fprintf(
+				stderr,
+				"%sWarning: Invalid length (%d) for file name detected. Using a default file name \"%s\" instead.%s\n",
+				_level_colors[3], (int) name_length, _default_log_name, COLOR_RESET
+			);
+			strcpy(_log_file_to_use, _default_log_name);
+		} else {
+			strcpy(_log_file_to_use, file_name);
+		}
+	}
+
+	// in use for dayly rotation
+	strcpy(_base_log_file, _log_file_to_use);
+	_initializing_done = true;
+}
+
 // -----------
 // public functions
 // -----------
 
+void init_log_by_arguments(const char *file_name, const LogLevel init_level, const LogRotation rotation, int size_in_mb, int keep_nbr_files, bool on_console) {
+	_internal_log_initializer(file_name, init_level, rotation, size_in_mb, keep_nbr_files, on_console);
+}
+
 void init_log(Logging *log) {
-	_level_for_logging = log->init_level;
-
-	// check for an invalid log level
-	if (!(_level_for_logging >= LOG_TRACE && _level_for_logging <= LOG_FATAL)) {
-		fprintf(
-			stderr,
-			"Warning: invalid log level setting detected. Set the level to %s default.\n",
-			_level_strings[2]
-		);
-		_level_for_logging = LOG_INFO;
-	}
-
-	if (!log->on_console_only) {
-		// file handling only
-
-		_log_rotation = log->rotation_setting;
-
-		// if SIZE_ROTATION is given, the size to store must be at least 1 (MB),
-		// otherwise NO_ROTATION is set
-		if (log->file_size_in_mb < 1 && _log_rotation == SIZE_ROTATION) {
-			fprintf(
-				stderr,
-				"Warning: invalid setting for option %s detected. Switching to option %s instead.\n",
-				_rotation_strings[2],
-				_rotation_strings[0]
-			);
-			_log_rotation = NO_ROTATION;
-		} else {
-			// 1024*1024 (bytes) * log->file_size_in_mb in MB
-			_size_for_file_size *= log->file_size_in_mb;
-		}
-
-		_nbr_of_keeping_files = log->nbr_of_keeping_files;
-
-		// if an invalid number (<2) is set, set this value to 2
-		// only for DAYLY_ROTATION and SIZE_ROTATION
-		if (_nbr_of_keeping_files < 2 && _log_rotation != NO_ROTATION) {
-			fprintf(
-				stderr,
-				"Warning: invalid number of keeping files detected: %d. Using 2 files to keep up by default.\n",
-				_nbr_of_keeping_files
-			);
-			_nbr_of_keeping_files = 2;
-		}
-
-		size_t name_length = strlen(log->file_name);
-		bool on_valid_name_length = name_length > 0 && name_length < LENGTH_FILE_NAME;
-
-		if (!on_valid_name_length) {
-			fprintf(
-				stderr,
-				"Warning: Invalid length (%d) for file name detected. Using a default file name \"%s\" instead.\n",
-				(int) name_length, _default_log_name
-			);
-			strcpy(_log_file_to_use, _default_log_name);
-		} else {
-			strcpy(_log_file_to_use, log->file_name);
-		}
-
-		// in use for dayly rotation
-		strcpy(_base_log_file, _log_file_to_use);
+	if (log == NULL) {
+		_internal_log_initializer("", LOG_INFO, NO_ROTATION, 0, 0, true);                                                          // redirect the log output to stdout instead
 	} else {
-		// only for handling on stdout
-		_on_console_only = true;
+		_internal_log_initializer(log->file_name, log->init_level, log->rotation_setting, log->file_size_in_mb, log->nbr_of_keeping_files, log->on_console_only);
 	}
 }
 
-void log_message(LogLevel level, const char* format, ...) {
+void write_to_log(LogLevel level, const char* format, ...) {
 	if (level < _level_for_logging) {
 		// every level, which has a lower value compared to the initial level
 		// won't be handled
 		return;
 	}
 
+	if (!_initializing_done) {
+		fprintf(
+			stderr, "%sERROR: No log handling is going to do since no init function before has been called.\n%s",
+			_level_colors[5], COLOR_RESET
+		);
+		return;
+	}
+
 	char log_line[LENGTH_LOG_MESSAGE];
-	memset(log_line, '\0', LENGTH_LOG_MESSAGE);
+	memset(log_line, '\0', sizeof(log_line));
 
 	va_list args;
 	va_start(args, format);
@@ -400,34 +435,35 @@ void log_message(LogLevel level, const char* format, ...) {
 		bool on_valid_file_pointer = _log_file_pointer != NULL;
 
 		if (!on_valid_file_pointer) {
-			perror("Unable to write a log file.");
-		} else {
-			if (_log_rotation != NO_ROTATION) {
-				// close this file stream and check, depending on which rotation is set,
-				// if a file rotation is required
-				dispose_logging();
-
-				if (check_for_new_rotation(_log_file_to_use)) {
-					if (_log_rotation == DAYLY_ROTATION) {
-						// only for DAYLY_ROTATION
-						_rotate_log_file_dayly();
-					} else {
-						// only for SIZE_ROTATION
-						_rotate_log_files();
-					}
-				}
-
-				_log_file_pointer = fopen(_log_file_to_use, "a");
-				on_valid_file_pointer = _log_file_pointer != NULL;
-			}
-
-			// handle only logging events, when a file pointer exists
-			if (on_valid_file_pointer) {
-				fprintf(_log_file_pointer, "[%s] [%s] %s\n", _timestamp, _log_level_to_string(level), log_line);
-			}
-
-			dispose_logging();
+			fprintf(stderr, "%sERROR: unable to write the log file...%s: %s\n", _level_colors[4], COLOR_RESET, strerror(errno));
+			return;
 		}
+
+		if (_log_rotation != NO_ROTATION) {
+			// close this file stream and check, depending on which rotation is set,
+			// if a file rotation is required
+			dispose();
+
+			if (check_for_new_rotation(_log_file_to_use)) {
+				if (_log_rotation == DAILY_ROTATION) {
+					// only for DAILY_ROTATION
+					_rotate_log_file_daily();
+				} else {
+					// only for SIZE_ROTATION
+					_rotate_log_files();
+				}
+			}
+
+			_log_file_pointer = fopen(_log_file_to_use, "a");
+			on_valid_file_pointer = _log_file_pointer != NULL;
+		}
+
+		// handle only logging events, when a file pointer exists
+		if (on_valid_file_pointer) {
+			fprintf(_log_file_pointer, "[%s] [%s] %s\n", _timestamp, _log_level_to_string(level), log_line);
+		}
+
+		dispose();
 	} else {
 		fprintf(stdout, "[%s] %s[%s]%s ", _timestamp, _level_colors[level], _log_level_to_string(level), COLOR_RESET);
 
@@ -440,7 +476,7 @@ void log_message(LogLevel level, const char* format, ...) {
 	}
 }
 
-void dispose_logging(void) {
+void dispose(void) {
 	if (_log_file_pointer != NULL) {
 		fclose(_log_file_pointer);
 		_log_file_pointer = NULL;

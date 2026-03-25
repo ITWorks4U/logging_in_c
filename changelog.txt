@@ -1,0 +1,47 @@
+###
+#   October 15th, 2025         version 1.0.0
+###
+-   offers to create log sessions on stdout or redirection to files
+-   offers for file using: NO_ROTATION, DAYLY_ROTATION, SIZE_ROTATION
+-   logging on stdout comes with a colorized version
+-   comes with test files for all four different log session kinds
+-   created readme.md file
+
+###
+#   March 25th, 2026           version 1.2.0
+###
+
+-   readme.md
+    -   added public functions as a simple overview and clean description
+    -   updated description
+
+-   logging.h
+    -   correction expression from DAYLY_ROTATION to DAILY_ROTATION
+    -   added description for LogRotation enumeration
+    -   added new function to initialize a log session by using the arguments
+    -   handled logic error, when instance to Logging structure points to NULL
+    -   handled logic error, when the log name points to NULL
+    -   renamed log_message() function to write_to_log()
+    -   renamed dispose_logging() function to dispose()
+
+-   logging.c
+    -   implementation changes from logging.h
+    -   changed macro constant with real length of the used C-Strings in functions: _rotate_log_file_daily(), _rotate_log_files(), write_to_log()
+    -   added _internal_log_initializer() function to handle both ways for new log session
+    -   check on console moved upwards and leaves the initial function earlier
+    -   in case of warnings the message turns into orange on stderr
+    -   in case of errors the message turns into red on stderr
+    -   unable to log, if one of the initializing functions hasn't been triggered earlier
+    -   fixed logical error for keep_nbr_of_files: one more file exists, which shouldn't
+
+-   test files
+    -   updated functionalities of the certain test files
+    -   offers an alternative way to initialize a log session
+    -   renamed file_dayly_rotation.c to file_daily_rotation.c
+
+-   created makefile (for UNIX systems only) / makefile.bat (Windows only)
+    -   offers to build the libary automatically
+    -   offers to clean up the output file(s)
+
+-   main.c
+    -   just a dummy source file without content => only in use to allow to compile the project

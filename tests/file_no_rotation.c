@@ -26,19 +26,20 @@ int main(void) {
 
 	init_log(&log);
 
+	//NOTE: the created log file will contain 300,001 lines
 	for(int i = 0; i < 100000; i++) {
 		// won't be handled
-		log_message(LOG_TRACE, LOG_MESSAGE);
-		log_message(LOG_DEBUG, LOG_MESSAGE);
-		log_message(LOG_INFO, LOG_MESSAGE);
+		write_to_log(LOG_TRACE, LOG_MESSAGE);
+		write_to_log(LOG_DEBUG, LOG_MESSAGE);
+		write_to_log(LOG_INFO, LOG_MESSAGE);
 
 		// starts to handle
-		log_message(LOG_WARNING, LOG_MESSAGE);
-		log_message(LOG_ERROR, LOG_MESSAGE);
-		log_message(LOG_FATAL, LOG_MESSAGE);
+		write_to_log(LOG_WARNING, LOG_MESSAGE);
+		write_to_log(LOG_ERROR, LOG_MESSAGE);
+		write_to_log(LOG_FATAL, LOG_MESSAGE);
 	}
 
-	dispose_logging();
+	dispose();
 
 	return EXIT_SUCCESS;
 }
