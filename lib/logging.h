@@ -20,8 +20,8 @@
 *
 * @author    itworks4u
 * @created   October 12th, 2025
-* @updated   March 25th, 2026
-* @version   1.2.0
+* @updated   March 27th, 2026
+* @version   1.3.0
 */
 
 #ifndef LOGGING_H
@@ -31,6 +31,8 @@
 // -----------
 // definitions
 // -----------
+
+#define CURRENT_VERSION          "1.3.0"
 #define LENGTH_TIMESTAMP         20
 #define LENGTH_TIMESTAMP_BUFFER  256
 #define LENGTH_LOG_MESSAGE       1024
@@ -61,7 +63,8 @@ typedef enum {
 typedef enum {
 	NO_ROTATION,
 	DAILY_ROTATION,
-	SIZE_ROTATION
+	SIZE_ROTATION,
+	UNSET_ROTATION
 } LogRotation;
 
 /// @brief Logging container. Offers to write a log event into a given file name.

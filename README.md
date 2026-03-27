@@ -9,8 +9,8 @@
 | - |
 | author: itworks4u |
 | created: October 13th, 2025 |
-| updated: March 25th, 2026 |
-| version: 1.2.0 |
+| updated: March 27th, 2026 |
+| version: 1.3.0 |
 
 ##  description
 -   customized logging system
