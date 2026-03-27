@@ -45,3 +45,50 @@
 
 -   main.c
     -   just a dummy source file without content => only in use to allow to compile the project
+
+###
+#   March 27th, 2026           version 1.3.0
+###
+-   makefile
+    -   updated description
+
+-   readme.md
+    -   updated to current version and last updated modification
+
+-   logging.h
+    -   added version as constant expression
+    -   added additional member for LogRotation enumeration
+
+-   logging.c
+    -   changed default LogRotation setting from NO_ROTATION to UNSET_ROTATION
+    -   level colors comes with a more clean description
+    -   moved function _rotate_log_file_daily() behind _rotate_log_files() function
+    -   updated function _rotate_log_file_daily()
+        -   hasn't used keep_nbr_of_files setting
+        -   used an own implementation => added the timestamp behind the last used logging file
+    -   updated function _rotate_log_files()
+        -   used more meaningful name for C-string "old_name"
+        -   function remove() may fail silently => surrounded with access() function to check, if this file exists
+    -   added _on_safe_localtime() function
+        -   for Windows and UNIX systems this function is for threading, where the real function call comes with a different order for arguments and return value
+    -   in case of errors these are going to write into the log file with LOG_ERROR setting
+    -   added _generate_last_error_message() function
+        -   for Windows only
+        -   in case of the error message was unable to create the error number instead is going to use
+    -   updated check_for_new_rotation() function
+        -   added underline for internal function
+        -   macro definition for Windows has been changed from #if _WIN32 to #ifdef _WIN32 to avoid side effects
+        -   for UNIX: instead of print a warning message to stderr, the message is going to write into the log file with certain log level
+    -   updated _internal_log_initializer function()
+        -   numbr of keeping files and file size is set by default
+        -   rotation setting will be compared
+        -   error messages are still for stderr
+        -   C-strings for file handling weren't null terminated and may contain any garbage
+        -   special handling for DAILY_ROTATION and SIZE_ROTATION
+    -   updated write_to_log function()
+        -   check for console only has been moved to top
+
+-   main.c
+    -   arguments are able to handle
+        -   only for 2 arguments and only for version with "-v" expression
+    -   removed duplicated "the" expression in commentary
